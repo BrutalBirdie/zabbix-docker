@@ -1,4 +1,4 @@
-FROM ubuntu:focal
+FROM cloudron/base:2.0.0@sha256:f9fea80513aa7c92fe2e7bf3978b54c8ac5222f47a9a32a7f8833edf0eb5a4f4
 
 LABEL org.opencontainers.image.title="Zabbix server (MySQL)" \
       org.opencontainers.image.authors="Alexey Pustovalov <alexey.pustovalov@zabbix.com>" \
@@ -10,14 +10,15 @@ LABEL org.opencontainers.image.title="Zabbix server (MySQL)" \
 STOPSIGNAL SIGTERM
 
 RUN set -eux && \
-    addgroup --system --gid 1995 --quiet zabbix && \
-    adduser --quiet \
-            --system --disabled-login \
-            --ingroup zabbix --ingroup root \
-            --uid 1997 \
-            --home /var/lib/zabbix/ \
-        zabbix && \
-    usermod -G zabbix,dialout zabbix && \
+    # Not needed for cloudron
+    #addgroup --system --gid 1995 --quiet zabbix && \
+    #adduser --quiet \
+    #        --system --disabled-login \
+    #        --ingroup zabbix --ingroup root \
+    #        --uid 1997 \
+    #        --home /var/lib/zabbix/ \
+    #    zabbix && \
+    #usermod -G zabbix,dialout zabbix && \
     mkdir -p /etc/zabbix && \
     mkdir -p /var/lib/zabbix && \
     mkdir -p /var/lib/zabbix/enc && \
@@ -35,7 +36,8 @@ RUN set -eux && \
     mkdir -p /usr/share/doc/zabbix-server-mysql && \
     apt-get -y update && \
     DEBIAN_FRONTEND=noninteractive apt-get -y --no-install-recommends install \
-            tini \
+            # Cloudron changes - Not needed
+            #tini \
             tzdata \
             ca-certificates \
             iputils-ping \
@@ -43,10 +45,12 @@ RUN set -eux && \
             fping \
             libcurl4 \
             libevent-2.1 \
-            libmysqlclient21 \
+            # Cloudron changes - Use right version for Ubuntu 18.04 LTS
+            libmysqlclient20 \
             libopenipmi0 \
             libpcre3 \
-            libsnmp35 \
+            # Cloudron changes - Use right version for Ubuntu 18.04 LTS
+            libsnmp30 \
             libssh-4 \
             libssl1.1 \
             libxml2 \
@@ -126,7 +130,8 @@ RUN set -eux && \
     cp database/mysql/create.sql.gz /usr/share/doc/zabbix-server-mysql/ && \
     cd /tmp/ && \
     rm -rf /tmp/zabbix-${ZBX_VERSION}/ && \
-    chown --quiet -R zabbix:root /etc/zabbix/ /var/lib/zabbix/ && \
+    # Cloudron changes 
+    chown --quiet -R cloudron:cloudron /etc/zabbix/ /var/lib/zabbix/ && \
     chgrp -R 0 /etc/zabbix/ /var/lib/zabbix/ && \
     chmod -R g=u /etc/zabbix/ /var/lib/zabbix/ && \
     DEBIAN_FRONTEND=noninteractive apt-get -y purge \
@@ -150,16 +155,57 @@ RUN set -eux && \
     apt-get -y autoremove && \
     rm -rf /var/lib/apt/lists/*
 
-EXPOSE 10051/TCP
+# Cloudron changes - Comment out all we don't need
+# EXPOSE 10051/TCP
 
-WORKDIR /var/lib/zabbix
+WORKDIR /app/code
 
-VOLUME ["/var/lib/zabbix/snmptraps", "/var/lib/zabbix/export"]
+# VOLUME ["/var/lib/zabbix/snmptraps", "/var/lib/zabbix/export"]
 
-COPY ["docker-entrypoint.sh", "/usr/bin/"]
+# COPY ["docker-entrypoint.sh", "/usr/bin/"]
 
-ENTRYPOINT ["/usr/bin/tini", "--", "/usr/bin/docker-entrypoint.sh"]
+# ENTRYPOINT ["/usr/bin/tini", "--", "/usr/bin/docker-entrypoint.sh"]
 
-USER 1997
+# USER 1997
 
-CMD ["/usr/sbin/zabbix_server", "--foreground", "-c", "/etc/zabbix/zabbix_server.conf"]
+# CMD ["/usr/sbin/zabbix_server", "--foreground", "-c", "/etc/zabbix/zabbix_server.conf"]
+COPY ["docker-entrypoint.sh", "sample.env", "/app/code/"]
+
+# Cloudron - make all allowed volumes avaible in /app/data/ - see https://hub.docker.com/r/zabbix/zabbix-server-mysql > "Allowed volumes for the Zabbix server container"
+RUN mv /usr/lib/zabbix/alertscripts /usr/lib/zabbix/alertscripts_default \
+    && ln -s /app/data/zabbix/alertscripts /usr/lib/zabbix/alertscripts \
+    #
+    && mv /usr/lib/zabbix/externalscripts /usr/lib/zabbix/externalscripts_default \
+    && ln -s /app/data/zabbix/externalscripts /usr/lib/zabbix/externalscripts \
+    #
+    && mv /var/lib/zabbix/modules /var/lib/zabbix/modules_default \
+    && ln -s /app/data/zabbix/modules /var/lib/zabbix/modules \
+    #
+    && mv /var/lib/zabbix/enc /var/lib/zabbix/enc_default \
+    && ln -s /app/data/zabbix/enc /var/lib/zabbix/enc \
+    #
+    && mv /var/lib/zabbix/ssh_keys /var/lib/zabbix/ssh_keys_default \
+    && ln -s /app/data/zabbix/ssh_keys /var/lib/zabbix/ssh_keys \
+    #
+    && mv /var/lib/zabbix/ssl/certs /var/lib/zabbix/ssl/certs_default \
+    && ln -s /app/data/zabbix/ssl/certs /var/lib/zabbix/ssl/certs \
+    #
+    && mv /var/lib/zabbix/ssl/keys /var/lib/zabbix/ssl/keys_default \
+    && ln -s /app/data/zabbix/ssl/keys /var/lib/zabbix/ssl/keys \
+    #
+    && mv /var/lib/zabbix/ssl/ssl_ca /var/lib/zabbix/ssl/ssl_ca_default \
+    && ln -s /app/data/zabbix/ssl/ssl_ca /var/lib/zabbix/ssl/ssl_ca \
+    #
+    && mv /var/lib/zabbix/snmptraps /var/lib/zabbix/snmptraps_default \
+    && ln -s /app/data/zabbix/snmptraps /var/lib/zabbix/snmptraps \
+    #
+    && mv /var/lib/zabbix/mibs /var/lib/zabbix/mibs_default \
+    && ln -s /app/data/zabbix/mibs /var/lib/zabbix/mibs \
+    #
+    && mv /var/lib/zabbix/export /var/lib/zabbix/export_default \
+    && ln -s /app/data/zabbix/export /var/lib/zabbix/export \
+    #
+    && mv /etc/zabbix /etc/zabbix_default \
+    && ln -s /app/data/zabbix/config /etc/zabbix
+
+CMD ["/app/code/docker-entrypoint.sh"]
